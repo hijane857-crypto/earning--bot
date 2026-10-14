@@ -20,7 +20,7 @@ def send_force_sub_message(chat_id):
     markup = types.InlineKeyboardMarkup(row_width=1)
     for ch in CHANNELS:
         markup.add(types.InlineKeyboardButton(f"{ch['name']}-এ জয়েন করুন", url=ch["link"]))
-    markup.add(types.InlineKeyboardButton("✅ জয়েন করেছি (যাচাই করুন)", callback_data="check_sub"))
+    markup.add(types.InlineKeyboardButton("✅ জয়েন করেছি (যাচাই করুন)", callback_data="check_joined"))
     
     bot.send_message(
         chat_id, 
@@ -49,5 +49,6 @@ def admin_panel(message):
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     btn_stats = types.InlineKeyboardButton("📊 মোট ইউজার", callback_data="adm_stats")
-    btn_bcast = types.InlineKeyboardButton("📢 ব্রডকাস্ট", callback_
+    markup.add(types.InlineKeyboardButton("✅ জয়েন করেছি (যাচাই করুন)", callback_data="check_joined"))
+    
     
