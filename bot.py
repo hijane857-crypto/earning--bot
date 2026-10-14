@@ -49,6 +49,8 @@ def admin_panel(message):
 
     markup = types.InlineKeyboardMarkup(row_width=2)
     btn_stats = types.InlineKeyboardButton("📊 মোট ইউজার", callback_data="adm_stats")
-    markup.add(types.InlineKeyboardButton("✅ জয়েন করেছি (যাচাই করুন)", callback_data="check_joined"))
-    
-    
+ btn_bcast = types.InlineKeyboardButton("📢 ব্রডকাস্ট", callback_data="admin_broadcast")
+        markup.add(btn_stats, btn_bcast)
+    bot.send_message(uid, "🛠 **অ্যাডমিন প্যানেল**", parse_mode="Markdown", reply_markup=markup)
+
+bot.infinity_polling()
