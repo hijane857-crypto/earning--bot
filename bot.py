@@ -68,4 +68,4 @@ def admin_panel(message):
     markup.add(btn_stats, btn_bcast)
     bot.send_message(uid, "🛠 **অ্যাডমিন প্যানেল**", parse_mode="Markdown", reply_markup=markup)
 keep_alive()
-bot.infinity_polling()
+bot.infinity_polling(skip_pending=True)
