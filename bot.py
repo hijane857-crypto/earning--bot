@@ -84,14 +84,6 @@ def set_setting(key, value):
 
 # চ্যানেল সাবস্ক্রিপশন চেক
 def is_subscribed_all(user_id):
-    for ch in CHANNELS:
-        try:
-            status = bot.get_chat_member(ch["id"], user_id).status
-            if status not in ['member', 'administrator', 'creator']:
-                return False
-        except:
-            # প্রাইভেট চ্যানেলে বট অ্যাডমিন না থাকলে সমস্যা এড়াতে
-            pass
     return True
 
 def force_sub_markup():
