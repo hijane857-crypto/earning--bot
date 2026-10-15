@@ -537,15 +537,15 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is alive!")
 
 def run_http():
-    port = int(os.environ.get("PORT", 1000))
+    port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
     server.serve_forever()
 
-# পোর্ট চালু রাখার থ্রেড
+# ওয়েব সার্ভারকে আলাদা ব্যাকগ্রাউন্ড থ্রেডে পাঠানো
 threading.Thread(target=run_http, daemon=True).start()
 
-# ================= বট চালু =================
+# বট চালু
 print("Bot is successfully running...")
+bot.remove_webhook()
 bot.infinity_polling(skip_pending=True)
-        
         
