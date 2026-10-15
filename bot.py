@@ -3,7 +3,7 @@ import telebot
 from telebot import types
 
 # ================= কনফিগারেশন =================
-BOT_TOKEN = "8893588513:AAEopQIxE75DKqna_JRrQUMDSBf1RepOg3U"
+BOT_TOKEN = "8893588513:AAGv_l1tmP2WucHKzcDnHUlLh90sZRcmcxQ"
 ADMIN_ID = 7103959220  # আপনার অ্যাডমিন আইডি
 DB_NAME = "database.db"
 
