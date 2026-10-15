@@ -475,7 +475,7 @@ def step_create_task(message):
         parts = [p.strip() for p in message.text.split("|")]
         title = parts[0]
         link = parts[1]
-                reward = float(parts[2])
+        reward = float(parts[2])
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
         c.execute("INSERT INTO tasks (title, link, reward) VALUES (?, ?, ?)", (title, link, reward))
@@ -484,6 +484,7 @@ def step_create_task(message):
         bot.send_message(ADMIN_ID, f"✅ নতুন টাস্ক সফলভাবে তৈরি হয়েছে!\n\n📌 শিরোনাম: {title}\n🔗 লিংক: {link}\n💰 রিওয়ার্ড: {reward} টাকা")
     except:
         bot.send_message(ADMIN_ID, "⚠️ ভুল ফরম্যাট! দয়া করে `শিরোনাম | লিংক | রিওয়ার্ড` এভাবে লিখে পাঠান।")
+
 
 def step_broadcast(message):
     text = message.text
