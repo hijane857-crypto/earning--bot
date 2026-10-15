@@ -53,6 +53,12 @@ def get_main_keyboard():
     btn_wd = types.KeyboardButton("💳 উত্তোলন")
     markup.add(btn_bal, btn_ref, btn_task, btn_set, btn_wd)
     return markup
+# --- স্টার্ট কমান্ড (/start) ---
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    chat_id = message.chat.id
+    send_force_sub_message(chat_id)
+
 
 # --- অ্যাডমিন কমান্ড (/admin) ---
 @bot.message_handler(commands=['admin'])
