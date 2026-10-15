@@ -7,7 +7,7 @@ from telebot import types
 
 # --- কনফিগারেশন ---
 BOT_TOKEN = "8893588513:AAEopQIxE75DKqna_JRrQUMDSBf1RepOg3U"
-ADMIN_ID = "7103959220"  # আপনার আপডেট করা টেলিগ্রাম আইডি
+ADMIN_ID = "7103959220"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -53,6 +53,17 @@ def init_db():
                     method TEXT,
                     wallet TEXT,
                     status TEXT DEFAULT 'PENDING'
+                )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    link TEXT,
+                    reward REAL
+                )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_tasks (
+                    user_id INTEGER,
+                    task_id INTEGER,
+                    PRIMARY KEY (user_id, task_id)
                 )''')
     # ডিফল্ট সেটিংস
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('refer_bonus', '5.0')")
@@ -117,7 +128,7 @@ def is_subscribed(user_id):
             if status not in ['member', 'administrator', 'creator']:
                 return False
         except:
-            return True  # চ্যানেল প্রাইভেট বা অ্যাডমিন না থাকলে বট যেন আটকে না থাকে
+            return True
     return True
 
 def force_sub_markup():
@@ -166,7 +177,7 @@ def start_command(message):
     bot.send_message(user_id, f"👋 স্বাগতম **{first_name}**!\nনিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশন বেছে নিন।",
                      parse_mode="Markdown", reply_markup=get_main_keyboard())
 
-# --- ইউজার বাটন অ্যাকশন ---
+# --- ইউজার মেনু বাটনসমূহ ---
 @bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স")
 def user_balance(message):
     user = get_user(message.chat.id)
@@ -193,7 +204,26 @@ def user_refer(message):
 
 @bot.message_handler(func=lambda msg: msg.text == "📋 টাস্ক")
 def user_tasks(message):
-    bot.send_message(message.chat.id, "🎯 **ডেইলি টাস্ক:**\nবর্তমানে কোনো টাস্ক সক্রিয় নেই। খুব শীঘ্রই নতুন টাস্ক যোগ হবে!")
+    user_id = message.chat.id
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''SELECT id, title, link, reward FROM tasks 
+                 WHERE id NOT IN (SELECT task_id FROM user_tasks WHERE user_id=?)''', (user_id,))
+    tasks = c.fetchall()
+    conn.close()
+
+    if not tasks:
+        bot.send_message(user_id, "🎉 বর্তমানে কোনো নতুন টাস্ক নেই! পরে আবার চেষ্টা করুন।")
+        return
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for t in tasks:
+        t_id, title, link, reward = t
+        markup.add(
+            types.InlineKeyboardButton(f"👉 {title} (+{reward}৳)", url=link),
+            types.InlineKeyboardButton(f"✅ সম্পন্ন করেছি #{t_id}", callback_data=f"claim_{t_id}")
+        )
+    bot.send_message(user_id, "🎯 **নিচের টাস্কগুলো সম্পন্ন করে লিংকের নিচের বোতাম চেপে বোনাস সংগ্রহ করুন:**", reply_markup=markup)
 
 @bot.message_handler(func=lambda msg: msg.text == "⚙️ ওয়ালেট সেট")
 def user_set_wallet(message):
@@ -235,6 +265,8 @@ def user_withdraw(message):
 def get_admin_markup():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
+        types.InlineKeyboardButton("➕ নতুন টাস্ক যোগ", callback_data="adm_add_task"),
+        types.InlineKeyboardButton("🗑 টাস্ক ডিলিট", callback_data="adm_del_task"),
         types.InlineKeyboardButton("📊 মোট ইউজার", callback_data="adm_stats"),
         types.InlineKeyboardButton("📢 ব্রডকাস্ট", callback_data="adm_bcast"),
         types.InlineKeyboardButton("🔍 ইউজার চেক", callback_data="adm_find_user"),
@@ -256,10 +288,10 @@ def admin_panel(message):
     text = (f"🛠 **অ্যাডমিন কন্ট্রোল প্যানেল**\n\n"
             f"🎁 প্রতি রেফার বোনাস: {ref_b} টাকা\n"
             f"💳 মিনিমাম উইথড্র: {min_w} টাকা\n"
-            f"কন্ট্রোল করতে নিচের অপশন নির্বাচন করুন:")
+            f"নিচের মেনু থেকে আপনার অ্যাকশন নির্বাচন করুন:")
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=get_admin_markup())
 
-# --- কলব্যাক কুয়েরি হ্যান্ডলার (অ্যাডমিন ও ইউজার বাটন) ---
+# --- কলব্যাক কুয়েরি হ্যান্ডলার ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     chat_id = call.message.chat.id
@@ -272,7 +304,30 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "❌ আপনি এখনো সবগুলো চ্যানেলে জয়েন করেননি!", show_alert=True)
 
-    # উইথড্র রিকোয়েস্ট ইনিশিয়েট
+    # ইউজার টাস্ক রিওয়ার্ড ক্লেম
+    elif data.startswith("claim_"):
+        t_id = int(data.split("_")[1])
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id FROM user_tasks WHERE user_id=? AND task_id=?", (chat_id, t_id))
+        already_done = c.fetchone()
+        if already_done:
+            bot.answer_callback_query(call.id, "⚠️ আপনি ইতিমধ্যে এই টাস্কটি সম্পন্ন করেছেন!", show_alert=True)
+            conn.close()
+            return
+
+        c.execute("SELECT reward FROM tasks WHERE id=?", (t_id,))
+        task = c.fetchone()
+        if task:
+            reward = task[0]
+            c.execute("INSERT INTO user_tasks (user_id, task_id) VALUES (?, ?)", (chat_id, t_id))
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, chat_id))
+            conn.commit()
+            bot.answer_callback_query(call.id, f"🎉 অভিনন্দন! +{reward} টাকা ব্যালেন্সে যুক্ত হয়েছে।", show_alert=True)
+            bot.delete_message(chat_id, call.message.message_id)
+        conn.close()
+
+    # উইথড্র রিকোয়েস্ট সাবমিট
     elif data.startswith("wd_"):
         method = data.split("_")[1]
         user = get_user(chat_id)
@@ -304,7 +359,7 @@ def handle_callbacks(call):
                     f"📱 একাউন্ট: `{wallet}`")
         bot.send_message(ADMIN_ID, adm_text, parse_mode="Markdown", reply_markup=adm_markup)
 
-    # অ্যাডমিন উইথড্র অনুমোদন/বাতিল
+    # অ্যাডমিন উইথড্র অনুমোদন ও বাতিল
     elif data.startswith("appr_"):
         wd_id = data.split("_")[1]
         conn = sqlite3.connect(DB_NAME)
@@ -316,7 +371,7 @@ def handle_callbacks(call):
             conn.commit()
             bot.edit_message_text(f"✅ উইথড্র #{wd_id} সফলভাবে **অনুমোদিত** করা হয়েছে।", chat_id, call.message.message_id)
             try:
-                bot.send_message(wd[0], f"🎉 আপনার **{wd[1]:.2f} টাকার** পেমেন্ট পাঠানো হয়েছে! সাথে থাকার জন্য ধন্যবাদ।")
+                bot.send_message(wd[0], f"🎉 আপনার **{wd[1]:.2f} টাকার** পেমেন্ট পাঠানো হয়েছে! ধন্যবাদ।")
             except:
                 pass
         conn.close()
@@ -331,14 +386,44 @@ def handle_callbacks(call):
             c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (wd[1], wd[0]))
             c.execute("UPDATE withdraws SET status='REJECTED' WHERE id=?", (wd_id,))
             conn.commit()
-            bot.edit_message_text(f"❌ উইথড্র #{wd_id} **বাতিল** করা হয়েছে এবং ব্যালেন্স ফেরত দেওয়া হয়েছে।", chat_id, call.message.message_id)
+            bot.edit_message_text(f"❌ উইথড্র #{wd_id} **বাতিল** করা হয়েছে এবং টাকা ইউজারের ব্যালেন্সে ফেরত দেওয়া হয়েছে।", chat_id, call.message.message_id)
             try:
-                bot.send_message(wd[0], f"⚠️ আপনার **{wd[1]:.2f} টাকার** উত্তোলনের আবেদনটি বাতিল করা হয়েছে এবং টাকা ব্যালেন্সে ফিরিয়ে দেওয়া হয়েছে।")
+                bot.send_message(wd[0], f"⚠️ আপনার **{wd[1]:.2f} টাকার** উত্তোলনের আবেদনটি বাতিল করে টাকা পুনরায় ব্যালেন্সে দেওয়া হয়েছে।")
             except:
                 pass
         conn.close()
 
-    # অ্যাডমিন কন্ট্রোল বাটনসমূহ
+    # অ্যাডমিন বাটন অ্যাকশন
+    elif data == "adm_add_task":
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(ADMIN_ID, "📝 নতুন টাস্ক যোগ করতে এভাবে লিখে পাঠান:\n\n`শিরোনাম | লিংক | রিওয়ার্ড`\n\nউদাহরণ:\n`ইউটিউব চ্যানেল সাবস্ক্রাইব | https://youtube.com/@channel | 3.5`")
+        bot.register_next_step_handler(msg, step_create_task)
+
+    elif data == "adm_del_task":
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, title FROM tasks")
+        all_tasks = c.fetchall()
+        conn.close()
+        if not all_tasks:
+            bot.answer_callback_query(call.id, "মুছে ফেলার মতো কোনো টাস্ক নেই!", show_alert=True)
+            return
+        del_markup = types.InlineKeyboardMarkup(row_width=1)
+        for t in all_tasks:
+            del_markup.add(types.InlineKeyboardButton(f"❌ ডিলিট: {t[1]}", callback_data=f"deltask_{t[0]}"))
+        bot.send_message(ADMIN_ID, "🗑 যে টাস্কটি মুছে ফেলতে চান তাতে চাপ দিন:", reply_markup=del_markup)
+
+    elif data.startswith("deltask_"):
+        task_id = int(data.split("_")[1])
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+        c.execute("DELETE FROM user_tasks WHERE task_id=?", (task_id,))
+        conn.commit()
+        conn.close()
+        bot.answer_callback_query(call.id, "টাস্কটি সফলভাবে মুছে ফেলা হয়েছে!", show_alert=True)
+        bot.delete_message(chat_id, call.message.message_id)
+
     elif data == "adm_stats":
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
@@ -352,7 +437,7 @@ def handle_callbacks(call):
 
     elif data == "adm_bcast":
         bot.answer_callback_query(call.id)
-        msg = bot.send_message(ADMIN_ID, "📢 সমস্ত ইউজারের কাছে পাঠানোর জন্য আপনার নোটিশ/মেসেজটি লিখে পাঠান:")
+        msg = bot.send_message(ADMIN_ID, "📢 সমস্ত ইউজারের কাছে পাঠানোর জন্য নোটিশটি লিখে পাঠান:")
         bot.register_next_step_handler(msg, step_broadcast)
 
     elif data == "adm_find_user":
@@ -377,111 +462,17 @@ def handle_callbacks(call):
 
     elif data == "adm_set_ref":
         bot.answer_callback_query(call.id)
-        msg = bot.send_message(ADMIN_ID, "🎁 প্রতি রেফারে কত টাকা দিতে চান? শুধু সংখ্যা লিখে পাঠান (যেমন: 10):")
+        msg = bot.send_message(ADMIN_ID, "🎁 প্রতি রেফারে কত টাকা দিতে চান? সংখ্যা লিখে পাঠান (যেমন: 5):")
         bot.register_next_step_handler(msg, step_set_ref_bonus)
 
     elif data == "adm_set_minwd":
         bot.answer_callback_query(call.id)
-        msg = bot.send_message(ADMIN_ID, "💳 সর্বনিম্ন উইথড্র কত টাকা করতে চান? শুধু সংখ্যা লিখে পাঠান (যেমন: 100):")
+        msg = bot.send_message(ADMIN_ID, "💳 সর্বনিম্ন উত্তোলন কত টাকা করতে চান? সংখ্যা লিখে পাঠান (যেমন: 50):")
         bot.register_next_step_handler(msg, step_set_min_wd)
 
-# --- অ্যাডমিন নেক্সট স্টেপ হ্যান্ডলারসমূহ ---
-def step_broadcast(message):
-    text = message.text
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT user_id FROM users")
-    users = c.fetchall()
-    conn.close()
-    sent = 0
-    for u in users:
-        try:
-            bot.send_message(u[0], f"📢 **অফিসিয়াল নোটিশ:**\n\n{text}", parse_mode="Markdown")
-            sent += 1
-        except:
-            pass
-    bot.send_message(ADMIN_ID, f"✅ সফলভাবে **{sent}** জন ইউজারের কাছে নোটিশ পাঠানো হয়েছে!")
-
-def step_find_user(message):
+# --- অ্যাডমিন ইনপুট স্টেপ ফাংশনসমূহ ---
+def step_create_task(message):
     try:
-        uid = int(message.text.strip())
-        u = get_user(uid)
-        if u:
-            status = "নিষিদ্ধ (Banned)" if u[7] == 1 else "সক্রিয় (Active)"
-            text = (f"👤 **ইউজার ডাটা:**\n\n"
-                    f"🆔 আইডি: `{u[0]}`\n"
-                    f"📛 নাম: {u[1]} (@{u[2]})\n"
-                    f"💰 ব্যালেন্স: **{u[3]:.2f} টাকা**\n"
-                    f"👥 মোট রেফার: {u[5]} জন\n"
-                    f"⚙️ ওয়ালেট: `{u[6]}`\n"
-                    f"🚦 স্ট্যাটাস: {status}")
-            bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
-        else:
-            bot.send_message(ADMIN_ID, "❌ এই আইডির কোনো ইউজার খুঁজে পাওয়া যায়নি।")
-    except:
-        bot.send_message(ADMIN_ID, "⚠️ সঠিক টেলিগ্রাম আইডি লিখুন।")
-
-def step_modify_bal(message, mode):
-    try:
-        parts = message.text.strip().split()
-        uid = int(parts[0])
-        amt = float(parts[1])
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        if mode == "add":
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amt, uid))
-            bot.send_message(ADMIN_ID, f"✅ `{uid}` আইডিতে **+{amt} টাকা** সফলভাবে যোগ করা হয়েছে।")
-            try:
-                bot.send_message(uid, f"🎁 অ্যাডমিন আপনার একাউন্টে **{amt} টাকা** যোগ করেছেন!")
-            except:
-                pass
-        else:
-            c.execute("UPDATE users SET balance = MAX(0, balance - ?) WHERE user_id=?", (amt, uid))
-            bot.send_message(ADMIN_ID, f"✅ `{uid}` আইডি থেকে **-{amt} টাকা** কেটে নেওয়া হয়েছে।")
-        conn.commit()
-        conn.close()
-    except:
-        bot.send_message(ADMIN_ID, "⚠️ ভুল ফরম্যাট! সঠিক আইডি এবং পরিমাণ স্পেস দিয়ে লিখুন।")
-
-def step_toggle_ban(message):
-    try:
-        uid = int(message.text.strip())
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT is_banned FROM users WHERE user_id=?", (uid,))
-        row = c.fetchone()
-        if row:
-            new_status = 0 if row[0] == 1 else 1
-            c.execute("UPDATE users SET is_banned=? WHERE user_id=?", (new_status, uid))
-            conn.commit()
-            status_text = "আনব্যান" if new_status == 0 else "ব্যান"
-            bot.send_message(ADMIN_ID, f"✅ ইউজার `{uid}` কে **{status_text}** করা হয়েছে।")
-        else:
-            bot.send_message(ADMIN_ID, "❌ ইউজার খুঁজে পাওয়া যায়নি।")
-        conn.close()
-    except:
-        bot.send_message(ADMIN_ID, "⚠️ সঠিক আইডি লিখুন।")
-
-def step_set_ref_bonus(message):
-    try:
-        val = float(message.text.strip())
-        update_setting("refer_bonus", val)
-        bot.send_message(ADMIN_ID, f"✅ রেফারেল বোনাস সফলভাবে **{val} টাকা** নির্ধারণ করা হয়েছে।")
-    except:
-        bot.send_message(ADMIN_ID, "⚠️ অনুগ্রহ করে একটি সঠিক সংখ্যা লিখুন।")
-
-def step_set_min_wd(message):
-    try:
-        val = float(message.text.strip())
-        update_setting("min_withdraw", val)
-        bot.send_message(ADMIN_ID, f"✅ সর্বনিম্ন উত্তোলন লিমিট **{val} টাকা** সেট করা হয়েছে।")
-    except:
-        bot.send_message(ADMIN_ID, "⚠️ অনুগ্রহ করে একটি সঠিক সংখ্যা লিখুন।")
-
-# --- বট স্টার্ট ---
-if __name__ == "__main__":
-    print("Starting Keep-Alive Web Server...")
-    keep_alive()
-    print("Bot is listening for messages...")
-    bot.infinity_polling(skip_pending=True)
-    
+        parts = [p.strip() for p in message.text.split("|")]
+        title = parts[0]
+     
