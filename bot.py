@@ -535,6 +535,10 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class SimpleHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -551,4 +555,5 @@ threading.Thread(target=run_http, daemon=True).start()
 # ================= বট চালু =================
 print("Bot is successfully running...")
 bot.infinity_polling(skip_pending=True)
+        
         
