@@ -530,7 +530,25 @@ def save_limits_step(message):
     except:
         bot.send_message(ADMIN_ID, "❌ ফরম্যাট ভুল! লিখুন: `5.0 50`")
 
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_http():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+# পোর্ট চালু রাখার থ্রেড
+threading.Thread(target=run_http, daemon=True).start()
+
 # ================= বট চালু =================
 print("Bot is successfully running...")
 bot.infinity_polling()
-                     
+        
