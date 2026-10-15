@@ -1,3 +1,5 @@
+import telebot
+from telebot import types
 from flask import Flask
 from threading import Thread
 
@@ -13,9 +15,7 @@ def run():
 def keep_alive():
     t = Thread(target=run)
     t.start()
-    import telebot
-from telebot import types
-
+    
 BOT_TOKEN = "8893588513:AAEopQIxE75DKqna_JRrQUMDSBf1RepOg3U"
 ADMIN_ID = "7103959220"
 
