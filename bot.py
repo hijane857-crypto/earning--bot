@@ -11,7 +11,7 @@ ADMIN_ID = "7103959220"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ফ্লাস্ক ওয়েব সার্ভার (Render ২৪ ঘণ্টা সচল রাখার জন্য)
+# ফ্লাস্ক ওয়েব সার্ভার (Render সচল রাখার জন্য)
 app = Flask(__name__)
 
 @app.route('/')
@@ -65,7 +65,6 @@ def init_db():
                     task_id INTEGER,
                     PRIMARY KEY (user_id, task_id)
                 )''')
-    # ডিফল্ট সেটিংস
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('refer_bonus', '5.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('min_withdraw', '50.0')")
     conn.commit()
@@ -177,7 +176,7 @@ def start_command(message):
     bot.send_message(user_id, f"👋 স্বাগতম **{first_name}**!\nনিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশন বেছে নিন।",
                      parse_mode="Markdown", reply_markup=get_main_keyboard())
 
-# --- ইউজার মেনু বাটনসমূহ ---
+# --- ইউজার বাটনসমূহ ---
 @bot.message_handler(func=lambda msg: msg.text == "💰 ব্যালেন্স")
 def user_balance(message):
     user = get_user(message.chat.id)
@@ -223,7 +222,7 @@ def user_tasks(message):
             types.InlineKeyboardButton(f"👉 {title} (+{reward}৳)", url=link),
             types.InlineKeyboardButton(f"✅ সম্পন্ন করেছি #{t_id}", callback_data=f"claim_{t_id}")
         )
-    bot.send_message(user_id, "🎯 **নিচের টাস্কগুলো সম্পন্ন করে লিংকের নিচের বোতাম চেপে বোনাস সংগ্রহ করুন:**", reply_markup=markup)
+    bot.send_message(user_id, "🎯 **নিচের টাস্কগুলো সম্পন্ন করে নিচের বোতাম চেপে রিওয়ার্ড সংগ্রহ করুন:**", reply_markup=markup)
 
 @bot.message_handler(func=lambda msg: msg.text == "⚙️ ওয়ালেট সেট")
 def user_set_wallet(message):
@@ -475,4 +474,113 @@ def step_create_task(message):
     try:
         parts = [p.strip() for p in message.text.split("|")]
         title = parts[0]
-     
+        link = parts[1]
+                reward = float(parts[2])
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("INSERT INTO tasks (title, link, reward) VALUES (?, ?, ?)", (title, link, reward))
+        conn.commit()
+        conn.close()
+        bot.send_message(ADMIN_ID, f"✅ নতুন টাস্ক সফলভাবে তৈরি হয়েছে!\n\n📌 শিরোনাম: {title}\n🔗 লিংক: {link}\n💰 রিওয়ার্ড: {reward} টাকা")
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ ভুল ফরম্যাট! দয়া করে `শিরোনাম | লিংক | রিওয়ার্ড` এভাবে লিখে পাঠান।")
+
+def step_broadcast(message):
+    text = message.text
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT user_id FROM users")
+    users = c.fetchall()
+    conn.close()
+    sent = 0
+    for u in users:
+        try:
+            bot.send_message(u[0], f"📢 **অফিসিয়াল নোটিশ:**\n\n{text}", parse_mode="Markdown")
+            sent += 1
+        except:
+            pass
+    bot.send_message(ADMIN_ID, f"✅ সফলভাবে **{sent}** জন ইউজারের কাছে নোটিশ পাঠানো হয়েছে!")
+
+def step_find_user(message):
+    try:
+        uid = int(message.text.strip())
+        u = get_user(uid)
+        if u:
+            status = "নিষিদ্ধ (Banned)" if u[7] == 1 else "সক্রিয় (Active)"
+            text = (f"👤 **ইউজার ডাটা:**\n\n"
+                    f"🆔 আইডি: `{u[0]}`\n"
+                    f"📛 নাম: {u[1]} (@{u[2]})\n"
+                    f"💰 ব্যালেন্স: **{u[3]:.2f} টাকা**\n"
+                    f"👥 মোট রেফার: {u[5]} জন\n"
+                    f"⚙️ ওয়ালেট: `{u[6]}`\n"
+                    f"🚦 স্ট্যাটাস: {status}")
+            bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
+        else:
+            bot.send_message(ADMIN_ID, "❌ এই আইডির কোনো ইউজার খুঁজে পাওয়া যায়নি।")
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ সঠিক টেলিগ্রাম আইডি লিখুন।")
+
+def step_modify_bal(message, mode):
+    try:
+        parts = message.text.strip().split()
+        uid = int(parts[0])
+        amt = float(parts[1])
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        if mode == "add":
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amt, uid))
+            bot.send_message(ADMIN_ID, f"✅ `{uid}` আইডিতে **+{amt} টাকা** সফলভাবে যোগ করা হয়েছে।")
+            try:
+                bot.send_message(uid, f"🎁 অ্যাডমিন আপনার একাউন্টে **{amt} টাকা** যোগ করেছেন!")
+            except:
+                pass
+        else:
+            c.execute("UPDATE users SET balance = MAX(0, balance - ?) WHERE user_id=?", (amt, uid))
+            bot.send_message(ADMIN_ID, f"✅ `{uid}` আইডি থেকে **-{amt} টাকা** কেটে নেওয়া হয়েছে।")
+        conn.commit()
+        conn.close()
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ ভুল ফরম্যাট! সঠিক আইডি এবং পরিমাণ স্পেস দিয়ে লিখুন।")
+
+def step_toggle_ban(message):
+    try:
+        uid = int(message.text.strip())
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT is_banned FROM users WHERE user_id=?", (uid,))
+        row = c.fetchone()
+        if row:
+            new_status = 0 if row[0] == 1 else 1
+            c.execute("UPDATE users SET is_banned=? WHERE user_id=?", (new_status, uid))
+            conn.commit()
+            status_text = "আনব্যান" if new_status == 0 else "ব্যান"
+            bot.send_message(ADMIN_ID, f"✅ ইউজার `{uid}` কে **{status_text}** করা হয়েছে।")
+        else:
+            bot.send_message(ADMIN_ID, "❌ ইউজার খুঁজে পাওয়া যায়নি।")
+        conn.close()
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ সঠিক আইডি লিখুন।")
+
+def step_set_ref_bonus(message):
+    try:
+        val = float(message.text.strip())
+        update_setting("refer_bonus", val)
+        bot.send_message(ADMIN_ID, f"✅ রেফারেল বোনাস সফলভাবে **{val} টাকা** নির্ধারণ করা হয়েছে।")
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ অনুগ্রহ করে একটি সঠিক সংখ্যা লিখুন।")
+
+def step_set_min_wd(message):
+    try:
+        val = float(message.text.strip())
+        update_setting("min_withdraw", val)
+        bot.send_message(ADMIN_ID, f"✅ সর্বনিম্ন উত্তোলন লিমিট **{val} টাকা** সেট করা হয়েছে।")
+    except:
+        bot.send_message(ADMIN_ID, "⚠️ অনুগ্রহ করে একটি সঠিক সংখ্যা লিখুন।")
+
+# --- বট স্টার্ট ---
+if __name__ == "__main__":
+    print("Starting Keep-Alive Web Server...")
+    keep_alive()
+    print("Bot is listening for messages...")
+    bot.infinity_polling(skip_pending=True)
+                         
