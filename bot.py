@@ -550,5 +550,5 @@ threading.Thread(target=run_http, daemon=True).start()
 
 # ================= বট চালু =================
 print("Bot is successfully running...")
-bot.infinity_polling()
+bot.infinity_polling(skip_pending=True)
         
