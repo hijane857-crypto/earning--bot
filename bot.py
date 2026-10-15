@@ -1,4 +1,19 @@
-import telebot
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+    import telebot
 from telebot import types
 
 BOT_TOKEN = "8893588513:AAEopQIxE75DKqna_JRrQUMDSBf1RepOg3U"
@@ -52,4 +67,5 @@ def admin_panel(message):
     btn_bcast = types.InlineKeyboardButton("📢 ব্রডকাস্ট", callback_data="admin_broadcast")
     markup.add(btn_stats, btn_bcast)
     bot.send_message(uid, "🛠 **অ্যাডমিন প্যানেল**", parse_mode="Markdown", reply_markup=markup)
+keep_alive()
 bot.infinity_polling()
